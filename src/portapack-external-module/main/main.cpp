@@ -16,6 +16,14 @@
 #define LED_GREEN GPIO_NUM_0
 #define LED_BLUE GPIO_NUM_45
 
+typedef struct
+{
+    uint32_t api_version;
+    uint32_t module_version;
+    char module_name[20];
+    // uint32_t _unused;
+} device_info;
+
 void initialize_gpio()
 {
     gpio_install_isr_service(0);
@@ -123,7 +131,7 @@ void initialize_new_i2c()
 
 // fixed api
 #include "i2c_slave_driver.h"
-uint16_t data;
+
 QueueHandle_t slave_queue;
 
 bool i2c_slave_callback(struct i2c_slave_device_t *dev, I2CSlaveCallbackReason reason)
@@ -146,13 +154,12 @@ bool i2c_slave_callback(struct i2c_slave_device_t *dev, I2CSlaveCallbackReason r
         // std::cout << "I2C_CALLBACK_SEND_DATA" << std::endl;
         if (dev->state == I2C_STATE_SEND)
         {
+            device_info info = {1, 1, "ESP32-S3-PPDEVKIT"};
+
             // std::cout << "I2C_STATE_SEND" << std::endl;
-            i2c_slave_send_data(dev, dev->buffer, 2);
+            i2c_slave_send_data(dev, (uint8_t *)&info, sizeof(device_info));
         }
-        else
-        {
-            // std::cout << "I2C_STATE_RECV" << std::endl;
-        }
+
         break;
 
     case I2C_CALLBACK_DONE:
@@ -163,10 +170,10 @@ bool i2c_slave_callback(struct i2c_slave_device_t *dev, I2CSlaveCallbackReason r
             gpio_set_level(LED_GREEN, 1);
             gpio_set_level(LED_BLUE, 0);
             BaseType_t high_task_wakeup = pdFALSE;
-            data = dev->bufend;
+            uint16_t data = *(uint16_t *)&dev->buffer[dev->bufstart];
 
             xQueueSendFromISR(slave_queue, &data, &high_task_wakeup);
-        } // std::cout << "I2C_CALLBACK_DONE" << std::endl;
+        }
         break;
 
     default:
@@ -193,25 +200,17 @@ void initialize_fixed_i2c()
     ESP_ERROR_CHECK(i2c_slave_new(&i2c_slave_config, &slave_device));
 }
 
-typedef struct
-{
-    uint32_t api_version;
-    uint32_t module_version;
-    char module_name[20];
-    // uint32_t _unused;
-} device_info;
-
 #include "hal/i2c_hal.h"
 
 // i2c_dev_t I2C0;
 
 static void dump_i2c_registers()
 {
-    uint32_t *registerPointer = (uint32_t *)&I2C0;
-    for (int i = 0x0; i < 0x80; i++)
-    {
-        std::cout << "Register " << std::hex << i << ": " << std::hex << registerPointer[i] << std::endl;
-    }
+    // uint32_t *registerPointer = (uint32_t *)&I2C0;
+    // for (int i = 0x0; i < 0x80; i++)
+    // {
+    //     std::cout << "Register " << std::hex << i << ": " << std::hex << registerPointer[i] << std::endl;
+    // }
 }
 
 static void i2c_task(void *arg)
@@ -297,17 +296,17 @@ static void i2c_task(void *arg)
 
             // uint16_t rbuf = *(uint16_t *)rx_data;
 
-            std::cout << "-- Received: " << rx_data << std::endl;
-            std::cout << "slave_device->bufstart: " << std::to_string(slave_device->bufstart) << std::endl;
-            std::cout << "slave_device->bufend: " << std::to_string(slave_device->bufend) << std::endl;
+            std::cout << "-- Received: 0x" << std::hex << rx_data << std::endl;
+            // std::cout << "slave_device->bufstart: " << std::to_string(slave_device->bufstart) << std::endl;
+            // std::cout << "slave_device->bufend: " << std::to_string(slave_device->bufend) << std::endl;
             // std::cout << "Received: " << data << std::endl;
 
             // dump all 128 bytes of slave_device->buffer in hex
-            for (int i = 0; i < 128; i++)
-            {
-                std::cout << std::hex << (int)slave_device->buffer[i] << " ";
-            }
-            std::cout << std::endl;
+            // for (int i = 0; i < 128; i++)
+            // {
+            //     std::cout << std::hex << (int)slave_device->buffer[i] << " ";
+            // }
+            // std::cout << std::endl;
 
             // vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
