@@ -107,7 +107,6 @@ static IRAM_ATTR void s_i2c_handle_rx_fifo_wm(i2c_slave_dev_private_t *i2c_slave
     // can't be in send mode here.
     uint32_t rx_fifo_cnt;
     i2c_ll_get_rxfifo_cnt(hal->dev, &rx_fifo_cnt);
-
     uint32_t fifo_cnt_rd = MIN(sizeof(s->buffer) - s->bufend, rx_fifo_cnt);
     if (fifo_cnt_rd > 0)
     {
@@ -242,52 +241,15 @@ static IRAM_ATTR void s_slave_fifo_isr_handler(uint32_t int_mask, i2c_slave_dev_
 
 static IRAM_ATTR void s_slave_isr_handle_default(void *arg)
 {
-
     i2c_slave_dev_private_t *i2c_slave = (i2c_slave_dev_private_t *)arg;
     i2c_hal_context_t *hal = &i2c_slave->hal;
     uint32_t int_mask = 0;
 
-    // esp_rom_printf("#################\n");
-    //  esp_rom_printf("fifo_rdata: ");
-    //  for (size_t i = 0; i < 32; i++)
-    //  {
-    //      esp_rom_printf("%02x ", hal->dev->data.fifo_rdata);
-    //  }
-    //  esp_rom_printf("\n");
     i2c_ll_get_intr_mask(hal->dev, &int_mask);
-    // esp_rom_printf("int mask: %08lx\n", int_mask); // 00000080 is I2C_TRANS_COMPLETE_INT_ST
-    // esp_rom_printf("int1 ENA: %x\n", hal->dev->int_ena.val);
-    // esp_rom_printf("rx buffer length is %d\n", hal->dev->sr.rxfifo_cnt);
-    //  esp_rom_printf("slave addressed is %d\n", hal->dev->sr.slave_addressed);
-    //  esp_rom_printf("our address is %08x\n", hal->dev->slave_addr.slave_addr);
-    //  esp_rom_printf("rw is %d\n", hal->dev->sr.slave_rw);
-
-    // esp_rom_printf("rxfifo_raddr: %d\n", hal->dev->fifo_st.rxfifo_raddr);
-    // esp_rom_printf("rxfifo_waddr: %d\n", hal->dev->fifo_st.rxfifo_waddr);
-    // esp_rom_printf("txfifo_raddr: %d\n", hal->dev->fifo_st.txfifo_raddr);
-    // esp_rom_printf("txfifo_waddr: %d\n", hal->dev->fifo_st.txfifo_waddr);
-
-    // esp_rom_printf("rxfifo: ");
-    // for (size_t i = 0; i < 32; i++)
-    // {
-    //     esp_rom_printf("%02x ", hal->dev->rxfifo_mem[i]);
-    // }
-    // esp_rom_printf("\n");
-
-    // esp_rom_printf("txfifo: ");
-    // for (size_t i = 0; i < 32; i++)
-    // {
-    //     esp_rom_printf("%02x ", hal->dev->txfifo_mem[i]);
-    // }
-    // esp_rom_printf("\n");
-
-    // esp_rom_printf("slave_rw_point: ");
-    // for (size_t i = 0; i < 32; i++)
-    // {
-    //     esp_rom_printf("%02x ", hal->dev->fifo_st.slave_rw_point);
-    // }
-    // esp_rom_printf("\n");
-
+    // esp_rom_printf("int mask: %08lx\n", int_mask);
+    // esp_rom_printf("rx buffer length is %d\n", hal->dev->status_reg.rx_fifo_cnt);
+    // esp_rom_printf("slave addressed is %d\n", hal->dev->status_reg.slave_addressed);
+    // esp_rom_printf("rw is %d\n", hal->dev->status_reg.slave_rw);
     if (int_mask == 0)
     {
         return;
@@ -337,9 +299,6 @@ esp_err_t i2c_slave_new(i2c_slave_config_t *config, i2c_slave_device_t **result)
                          I2C_SLAVE_STRETCH_INT_ENA_M |
                          I2C_RXFIFO_WM_INT_ENA_M |
                          I2C_TXFIFO_WM_INT_ENA_M);
-
-    printf("setting int mask: %d\n", (int)isr_mask);
-
     ESP_RETURN_ON_ERROR(esp_intr_alloc_intrstatus(i2c_periph_signal[dev->portNum].irq, isr_flags, (uint32_t)i2c_ll_get_interrupt_status_reg(hal->dev), isr_mask, s_slave_isr_handle_default, dev, &dev->intr), TAG, "Unable to create interrupt");
     i2c_ll_clear_intr_mask(hal->dev, isr_mask);
     i2c_hal_slave_init(hal);
@@ -366,14 +325,10 @@ esp_err_t i2c_slave_new(i2c_slave_config_t *config, i2c_slave_device_t **result)
 
     i2c_ll_slave_tx_auto_start_en(hal->dev, true);
     i2c_ll_slave_enable_rx_it(hal->dev);
-
-    // i2c_ll_disable_intr_mask(hal->dev, isr_mask);
-    // i2c_ll_enable_intr_mask(hal->dev, I2C_TXFIFO_WM_INT_ENA_M);
     i2c_ll_enable_intr_mask(hal->dev, I2C_SLAVE_STRETCH_INT_ENA_M);
 
     i2c_ll_update(hal->dev);
     *result = &dev->user_dev;
-
     return ESP_OK;
 }
 
