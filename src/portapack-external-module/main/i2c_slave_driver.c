@@ -302,20 +302,10 @@ esp_err_t i2c_slave_new(i2c_slave_config_t *config, i2c_slave_device_t **result)
     ESP_RETURN_ON_ERROR(esp_intr_alloc_intrstatus(i2c_periph_signal[dev->portNum].irq, isr_flags, (uint32_t)i2c_ll_get_interrupt_status_reg(hal->dev), isr_mask, s_slave_isr_handle_default, dev, &dev->intr), TAG, "Unable to create interrupt");
     i2c_ll_clear_intr_mask(hal->dev, isr_mask);
     i2c_hal_slave_init(hal);
-
-    i2c_ll_slave_set_fifo_mode(hal->dev, true);
-    i2c_ll_enable_mem_access_nonfifo(hal->dev, false);
-
-    PERIPH_RCC_ATOMIC()
-    {
-        i2c_ll_set_source_clk(hal->dev, SOC_MOD_CLK_XTAL);
-    }
-
+    i2c_ll_set_source_clk(hal->dev, 4);
     i2c_ll_set_slave_addr(hal->dev, config->address, false);
-
     i2c_ll_set_txfifo_empty_thr(hal->dev, SOC_I2C_FIFO_LEN / 2);
     i2c_ll_set_rxfifo_full_thr(hal->dev, SOC_I2C_FIFO_LEN / 2);
-
     i2c_ll_set_sda_timing(hal->dev, 10, 10);
     i2c_ll_set_tout(hal->dev, 32000);
 
