@@ -21,10 +21,21 @@
 
 #pragma once
 
-#include "standalone_app.hpp"
+#include "standalone_application.hpp"
 
-void initialize(const standalone_application_api_t& api);
-void on_event(const uint32_t& events);
-void shutdown();
+#include "ui/ui_widget.hpp"
+#include "ui/theme.hpp"
 
-extern const standalone_application_api_t* _api;
+class StandaloneViewMirror : public ui::View
+{
+public:
+    StandaloneViewMirror() : View{{0, 16, 240, 304}}
+    {
+        add_children({&text});
+
+        text.set("Hello from standalone app!");
+    }
+
+private:
+    ui::Text text{{24, 96, 200, 16}};
+};

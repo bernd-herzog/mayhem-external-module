@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Bernd Herzog
+ * Copyright (C) 2023 Kyle Reed
  *
  * This file is part of PortaPack.
  *
@@ -19,34 +19,17 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include "uart.hpp"
+#ifndef __UI_FONT_FIXED_5X8_H__
+#define __UI_FONT_FIXED_5X8_H__
 
-#include <memory>
+#include "ui_text.hpp"
 
-ui::Widget *standaloneViewMirror = nullptr;
+namespace ui {
+namespace font {
 
-extern "C" void initialize(const standalone_application_api_t &api)
-{
-    _api = &api;
+extern const ui::Font fixed_5x8;
 
-    standaloneViewMirror = new StandaloneViewMirror();
-    standaloneViewMirror->set_style(ui::Theme::getInstance()->bg_dark);
-}
+}  // namespace font
+}  // namespace ui
 
-extern "C" void on_event(const uint32_t &events)
-{
-    (void)events;
-    //_api->fill_rectangle(50, 50, 50, 50, 0x7733);
-}
-
-extern "C" void shutdown()
-{
-}
-
-extern "C" void PaintViewMirror()
-{
-    ui::Painter painter;
-    if (standaloneViewMirror)
-        painter.paint_widget_tree(standaloneViewMirror);
-    // standaloneViewMirror->paint(painter);
-}
+#endif /*__UI_FONT_FIXED_5X8_H__*/

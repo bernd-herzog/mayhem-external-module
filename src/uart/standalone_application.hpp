@@ -26,24 +26,30 @@
 #include <cstdint>
 #include <stddef.h>
 
-#define CURRENT_STANDALONE_APPLICATION_API_VERSION 1
+#define CURRENT_STANDALONE_APPLICATION_API_VERSION 2
 
-struct standalone_application_api_t {
-    void* (*malloc)(size_t size);
-    void* (*calloc)(size_t num, size_t size);
-    void* (*realloc)(void* p, size_t size);
-    void (*free)(void* p);
-    void (*create_thread)(int32_t (*fn)(void*), void* arg, size_t stack_size, int priority);
+struct standalone_application_api_t
+{
+    void *(*malloc)(size_t size);
+    void *(*calloc)(size_t num, size_t size);
+    void *(*realloc)(void *p, size_t size);
+    void (*free)(void *p);
+    void (*create_thread)(int32_t (*fn)(void *), void *arg, size_t stack_size, int priority);
     void (*fill_rectangle)(int x, int y, int width, int height, uint16_t color);
     uint8_t (*swizzled_switches)();
     uint64_t (*get_switches_state)();
+    void (*fill_rectangle_unrolled8)(int x, int y, int width, int height, uint16_t color);
+    void (*draw_bitmap)(int x, int y, int width, int height, const uint8_t *pixels, uint16_t foreground, uint16_t background);
 
     // HOW TO extend this interface:
     // to keep everything backward compatible: add new fields at the end
     // and increment CURRENT_STANDALONE_APPLICATION_API_VERSION
 };
 
-enum app_location_t : uint32_t {
+extern const standalone_application_api_t *_api;
+
+enum app_location_t : uint32_t
+{
     UTILITIES = 0,
     RX,
     TX,
@@ -51,7 +57,8 @@ enum app_location_t : uint32_t {
     HOME
 };
 
-struct standalone_application_information_t {
+struct standalone_application_information_t
+{
     uint32_t header_version;
 
     uint8_t app_name[16];
@@ -60,15 +67,22 @@ struct standalone_application_information_t {
     app_location_t menu_location;
 
     /// @brief gets called once at application start
-    void (*initialize)(const standalone_application_api_t& api);
+    void (*initialize)(const standalone_application_api_t &api);
 
     /// @brief gets called when an event occurs
     /// @param events bitfield of events
     /// @note events are defined in firmware/application/event_m0.hpp
-    void (*on_event)(const uint32_t& events);
+    void (*on_event)(const uint32_t &events);
 
     /// @brief gets called once at application shutdown
     void (*shutdown)();
+
+    void (*PaintViewMirror)();
 };
+
+extern "C" void initialize(const standalone_application_api_t &api);
+extern "C" void on_event(const uint32_t &events);
+extern "C" void shutdown();
+extern "C" void PaintViewMirror();
 
 #endif /*__UI_STANDALONE_APP_H__*/

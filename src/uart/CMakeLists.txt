@@ -24,11 +24,15 @@
 # NOTE: Can be overridden externally.
 #
 
-enable_language(C CXX ASM)
+cmake_minimum_required(VERSION 3.25)
+
+MESSAGE(STATUS "Using toolchain file: ${CMAKE_SOURCE_DIR}/${CMAKE_TOOLCHAIN_FILE}")
+
+#enable_language(C CXX ASM)
 
 include(CheckCXXCompilerFlag)
 
-project(uart_app)
+project(uart_app CXX ASM)
 
 # Compiler options here.
 set(USE_OPT "-Os -g --specs=nano.specs --specs=nosys.specs")
@@ -49,7 +53,7 @@ set(USE_CPPOPT "${USE_CPPOPT} -fno-rtti -fno-exceptions -Weffc++ -Wuninitialized
 set(USE_LINK_GC yes)
 
 # Linker extra options here.
-set(USE_LDOPT)
+#set(USE_LDOPT --nostartfiles)
 
 # Enable this if you want link time optimizations (LTO) - this flag affects chibios only
 set(USE_LTO no)
@@ -80,7 +84,7 @@ set(USE_FPU no)
 #
 
 # Define linker script file here
-set(LDSCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/external.ld)
+set(LDSCRIPT ${CMAKE_CURRENT_SOURCE_DIR}/config/standalone_application_linker_script.ld)
 
 
 # C sources that can be compiled in ARM or THUMB mode depending on the global
@@ -201,28 +205,38 @@ set(ULIBS)
 # End of user defines
 ##############################################################################
 
-set(RULESPATH ${CHIBIOS}/os/ports/GCC/ARMCMx)
-include(${RULESPATH}/rules.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/config/rules.cmake)
 
 ##############################################################################
 
 
-add_executable(${PROJECT_NAME}.elf ${CSRC} ${CPPSRC} ${ASMSRC})
-set_target_properties(${PROJECT_NAME}.elf PROPERTIES LINK_DEPENDS ${LDSCRIPT})
+add_executable(${PROJECT_NAME}.ppsi ${CSRC} ${CPPSRC} ${ASMSRC})
+set_target_properties(${PROJECT_NAME}.ppsi PROPERTIES LINK_DEPENDS ${LDSCRIPT})
 add_definitions(${DEFS})
 include_directories(. ${INCDIR})
 link_directories(${LLIBDIR})
-target_link_libraries(${PROJECT_NAME}.elf -Wl,-Map=${PROJECT_NAME}.map)
+
+#target_compile_definitions(${PROJECT_NAME}.ppsi PRIVATE "${DDEFS}")
+#target_compile_features   (${PROJECT_NAME}.ppsi PRIVATE cxx_std_17)
+#target_compile_options    (${PROJECT_NAME}.ppsi PRIVATE -Os -g -mcpu=cortex-m0 -mno-thumb-interwork -mthumb -fno-common --specs=nano.specs --specs=nosys.specs -fno-rtti -fno-exceptions -Weffc++ -Wuninitialized -fno-use-cxa-atexit)
+
+target_link_libraries(${PROJECT_NAME}.ppsi -Wl,-Map=${PROJECT_NAME}.map)
+target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,--print-memory-usage")
+#target_link_libraries(${PROJECT_NAME}.ppsi "-nostartfiles")
+#target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,--cref,--no-warn-mismatch")
+#target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,--entry=_standalone_application_information")
+#target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,-T${LDSCRIPT}")
 
 # redirect std lib memory allocations
-target_link_libraries(${PROJECT_NAME}.elf "-Wl,-wrap,_malloc_r")
-target_link_libraries(${PROJECT_NAME}.elf "-Wl,-wrap,_free_r")
-target_link_libraries(${PROJECT_NAME}.elf "-Wl,--print-memory-usage")
+target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,-wrap,_malloc_r")
+target_link_libraries(${PROJECT_NAME}.ppsi "-Wl,-wrap,_free_r")
 
 add_custom_command(
 	OUTPUT ${PROJECT_NAME}.ppmp
-	COMMAND ${CMAKE_OBJCOPY} -v -O binary ${PROJECT_NAME}.elf ${PROJECT_NAME}.ppmp
-	DEPENDS ${PROJECT_NAME}.elf
+	COMMAND ${CMAKE_OBJCOPY} -v -O binary ${PROJECT_NAME}.ppsi.elf ${PROJECT_NAME}.ppmp
+	COMMAND ${CMAKE_OBJDUMP} --source ${PROJECT_NAME}.ppsi.elf > ${PROJECT_NAME}.objdump.txt
+	COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/config/create_header.py ${PROJECT_NAME}.ppmp ${PROJECT_NAME}.h
+	DEPENDS ${PROJECT_NAME}.ppsi
 )
 
 add_custom_target(

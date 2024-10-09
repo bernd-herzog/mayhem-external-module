@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Bernd Herzog
+ * Copyright (C) 2015 Jared Boone, ShareBrained Technology, Inc.
  *
  * This file is part of PortaPack.
  *
@@ -19,34 +19,27 @@
  * Boston, MA 02110-1301, USA.
  */
 
-#include "uart.hpp"
+#ifndef __UI_FOCUS_H__
+#define __UI_FOCUS_H__
 
-#include <memory>
+#include "ui.hpp"
 
-ui::Widget *standaloneViewMirror = nullptr;
+namespace ui {
 
-extern "C" void initialize(const standalone_application_api_t &api)
-{
-    _api = &api;
+class Widget;
 
-    standaloneViewMirror = new StandaloneViewMirror();
-    standaloneViewMirror->set_style(ui::Theme::getInstance()->bg_dark);
-}
+class FocusManager {
+   public:
+    Widget* focus_widget() const;
+    void set_focus_widget(Widget* const new_focus_widget);
 
-extern "C" void on_event(const uint32_t &events)
-{
-    (void)events;
-    //_api->fill_rectangle(50, 50, 50, 50, 0x7733);
-}
+    void update(Widget* const top_widget, const KeyEvent event);
+    // void update(Widget* const top_widget, const TouchEvent event);
 
-extern "C" void shutdown()
-{
-}
+   private:
+    Widget* focus_widget_{nullptr};
+};
 
-extern "C" void PaintViewMirror()
-{
-    ui::Painter painter;
-    if (standaloneViewMirror)
-        painter.paint_widget_tree(standaloneViewMirror);
-    // standaloneViewMirror->paint(painter);
-}
+} /* namespace ui */
+
+#endif /*__UI_FOCUS_H__*/

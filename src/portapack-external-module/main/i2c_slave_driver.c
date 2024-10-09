@@ -185,7 +185,7 @@ static IRAM_ATTR void s_i2c_handle_tx_fifo_wm(i2c_slave_dev_private_t *i2c_slave
 static IRAM_ATTR void s_i2c_handle_clock_stretch(i2c_slave_dev_private_t *i2c_slave)
 {
     i2c_hal_context_t *hal = &i2c_slave->hal;
-    int stretch_cause = hal->dev->status_reg.stretch_cause;
+    int stretch_cause = hal->dev->sr.stretch_cause;
     i2c_slave_device_t *s = &i2c_slave->user_dev;
     // esp_rom_printf("stretch cause is %d\n", stretch_cause);
     // esp_rom_printf("buffer length is %d\n", hal->dev->status_reg.tx_fifo_cnt);
@@ -312,8 +312,12 @@ esp_err_t i2c_slave_new(i2c_slave_config_t *config, i2c_slave_device_t **result)
     // enable interrupts for stretch and receiveing, those always stay enabled.
     i2c_ll_slave_enable_scl_stretch(hal->dev, true);
     hal->dev->scl_stretch_conf.stretch_protect_num = 500;
+
+    i2c_ll_slave_tx_auto_start_en(hal->dev, true);
     i2c_ll_slave_enable_rx_it(hal->dev);
     i2c_ll_enable_intr_mask(hal->dev, I2C_SLAVE_STRETCH_INT_ENA_M);
+
+    i2c_ll_update(hal->dev);
     *result = &dev->user_dev;
     return ESP_OK;
 }
