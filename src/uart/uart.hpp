@@ -31,11 +31,23 @@ class StandaloneViewMirror : public ui::View
 public:
     StandaloneViewMirror() : View{{0, 16, 240, 304}}
     {
-        add_children({&text});
+        set_style(ui::Theme::getInstance()->bg_dark);
+
+        add_children({&text, &console});
 
         text.set("Hello from standalone app!");
+
+        console.hidden(false);
+        console.visible(true);
+        console.writeln("console.test");
+    }
+
+    ui::Console &get_console()
+    {
+        return console;
     }
 
 private:
-    ui::Text text{{24, 96, 200, 16}};
+    ui::Text text{{8, 1 * 16, 208, 16}};
+    ui::Console console{{0, 4 * 16, 240, 240}};
 };

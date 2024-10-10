@@ -2,17 +2,22 @@
 #include <memory>
 #include <cstring>
 #include <vector>
+#include <queue>
 
 #include "driver/i2c.h"
+#include "driver/uart.h"
 #include "uart_app.h"
 
 static_assert(sizeof(uart_app) % 32 == 0, "app size must be multiple of 32 bytes. fill with 0s");
 
-// NANO:A1 is NORA:H8 is ESP32:7 is GPIO:2
-#define I2C_SLAVE_SDA_IO GPIO_NUM_2
+// NANO:D2 is NORA:J8 is ESP32:9 is GPIO:4
+#define I2C_SLAVE_SDA_IO GPIO_NUM_5
 
-// NANO:A2 is NORA:J9 is ESP32:8 is GPIO:3
-#define I2C_SLAVE_SCL_IO GPIO_NUM_3
+// NANO:D3 is NORA:J7 is ESP32:10 is GPIO:5
+#define I2C_SLAVE_SCL_IO GPIO_NUM_6
+
+// A7 is GPIO:14
+#define UART_RX GPIO_NUM_14
 
 #define ESP_SLAVE_ADDR 0x51
 
@@ -59,6 +64,9 @@ enum class CommandState : uint16_t
 
     // will respond with application data
     COMMAND_APP_TRANSFER = 0x4183,
+
+    // UART specific commands
+    COMMAND_UART_REQUESTDATA = 0x7F01,
 };
 
 volatile CommandState command_state = CommandState::COMMAND_NONE;
@@ -81,6 +89,7 @@ void initialize_gpio()
 #include "i2c_slave_driver.h"
 
 QueueHandle_t slave_queue;
+std::queue<uint8_t> uart_queue;
 
 void on_command_ISR(CommandState command, std::vector<uint8_t> additional_data)
 {
@@ -103,6 +112,9 @@ void on_command_ISR(CommandState command, std::vector<uint8_t> additional_data)
             app_transfer_block = *(uint16_t *)(additional_data.data() + 2);
             esp_rom_printf("sending data block: %04x\n", app_transfer_block);
         }
+        break;
+
+    case CommandState::COMMAND_UART_REQUESTDATA:
         break;
 
     default:
@@ -150,6 +162,32 @@ std::vector<uint8_t> on_send_ISR()
         {
             return std::vector<uint8_t>(uart_app + app_transfer_block * 32, uart_app + app_transfer_block * 32 + 32);
         }
+        break;
+    }
+
+    case CommandState::COMMAND_UART_REQUESTDATA:
+    {
+        // send 1+1+64 bytes
+        // 1 byte: data length
+        // 1 byte: more data available
+        // 64 bytes: data from uart_queue optionally filled with 0xFF
+
+        std::vector<uint8_t> data(66);
+
+        size_t bytesToSend = uart_queue.size() > 64 ? 64 : uart_queue.size();
+        data[0] = bytesToSend;
+        data[1] = uart_queue.size() > 64 ? 1 : 0;
+
+        for (int i = bytesToSend; i < 64; i++)
+            data[i + 2] = 0xFF;
+
+        for (int i = 0; i < bytesToSend; i++)
+        {
+            data[i + 2] = uart_queue.front();
+            uart_queue.pop();
+        }
+
+        return data;
     }
 
     default:
@@ -231,6 +269,30 @@ void initialize_fixed_i2c()
     ESP_ERROR_CHECK(i2c_slave_new(&i2c_slave_config, &slave_device));
 }
 
+#define BUF_SIZE (1024)
+
+uart_config_t uart_config = {
+    .baud_rate = 230400,
+    .data_bits = UART_DATA_8_BITS,
+    .parity = UART_PARITY_DISABLE,
+    .stop_bits = UART_STOP_BITS_1,
+    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+    .source_clk = UART_SCLK_DEFAULT,
+};
+
+void initialize_uart()
+{
+    int intr_alloc_flags = 0;
+
+#if CONFIG_UART_ISR_IN_IRAM
+    intr_alloc_flags = ESP_INTR_FLAG_IRAM;
+#endif
+
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+}
+
 static void i2c_task(void *arg)
 {
     while (true)
@@ -259,12 +321,39 @@ static void i2c_task(void *arg)
     }
 }
 
+static void uart_task(void *arg)
+{
+    uint8_t *data = (uint8_t *)malloc(BUF_SIZE);
+    while (true)
+    {
+        try
+        {
+            int len = uart_read_bytes(UART_NUM_1, data, (BUF_SIZE - 1), 20 / portTICK_PERIOD_MS);
+            if (len != 0)
+            {
+                // std::cout << "uart len: " << len << std::endl;
+                // std::cout << "uart data: " << std::string((char *)data, len) << std::endl;
+
+                for (int i = 0; i < len; i++)
+                    uart_queue.push(data[i]);
+            }
+        }
+        catch (const std::exception &ex)
+        {
+            std::cout << "Exception: " << std::endl;
+            std::cout << ex.what() << std::endl;
+        }
+    }
+}
+
 extern "C" void app_main(void)
 {
     initialize_gpio();
     initialize_fixed_i2c();
+    initialize_uart();
 
     std::cout << "Hello, world!" << std::endl;
 
     xTaskCreate(i2c_task, "i2c_task", 1024 * 2, (void *)0, 10, NULL);
+    xTaskCreate(uart_task, "uart_task", 1024 * 2, (void *)0, 10, NULL);
 }

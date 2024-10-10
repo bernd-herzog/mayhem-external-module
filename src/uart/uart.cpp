@@ -22,21 +22,42 @@
 #include "uart.hpp"
 
 #include <memory>
+#include <string>
 
-ui::Widget *standaloneViewMirror = nullptr;
+StandaloneViewMirror *standaloneViewMirror = nullptr;
 
 extern "C" void initialize(const standalone_application_api_t &api)
 {
     _api = &api;
 
     standaloneViewMirror = new StandaloneViewMirror();
-    standaloneViewMirror->set_style(ui::Theme::getInstance()->bg_dark);
 }
 
 extern "C" void on_event(const uint32_t &events)
 {
     (void)events;
+
+    // standaloneViewMirror->get_console().write(".");
+
     //_api->fill_rectangle(50, 50, 50, 50, 0x7733);
+
+    std::vector<uint8_t> data(66);
+    uint8_t more_data_available;
+    uint16_t cmd = 0x7F01;
+    do
+    {
+        if (_api->i2c_read((uint8_t *)&cmd, 2, data.data(), 66) == false)
+            return;
+
+        uint8_t data_len = data[0];
+        more_data_available = data[1];
+        uint8_t *data_ptr = data.data() + 2;
+
+        if (data_len > 0)
+        {
+            standaloneViewMirror->get_console().write(std::string((char *)data_ptr, data_len));
+        }
+    } while (more_data_available == 1);
 }
 
 extern "C" void shutdown()
