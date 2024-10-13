@@ -33,18 +33,22 @@ public:
     {
         set_style(ui::Theme::getInstance()->bg_dark);
 
-        add_children({&text, &console, &button});
+        add_children({&text,
+                      &console,
+                      &button_auto,
+                      &button_n,
+                      &button_p
+
+        });
 
         text.set("BR: 115200");
 
-        // console.hidden(false);
-        // console.visible(true);
-
-        button.on_select = [this](ui::Button &button)
+        button_auto.on_select = [this](ui::Button &button)
         {
-            button.blur();
-            //_api->panic("Button pressed");
-            // text.set("BR: 9600");
+            // button.blur();
+            //  text.set("BR: 9600");
+
+            // console.writeln("button pressed");
         };
     }
 
@@ -58,9 +62,18 @@ public:
         return context_;
     }
 
+    void focus() override
+    {
+        button_auto.focus();
+    }
+
 private:
-    ui::Text text{{4, 4, 120, 16}};
-    ui::Button button{{120, 4 + 24, 116, 24}, "DETECT BR"};
+    ui::Text text{{4, 4, 96, 16}};
+
+    ui::Button button_n{{100, 4, 16, 24}, "-"};
+    ui::Button button_p{{120, 4, 16, 24}, "+"};
+
+    ui::Button button_auto{{140, 4, 64, 24}, "AUTO"};
 
     ui::Console console{{0, 4 * 16, 240, 240}};
 

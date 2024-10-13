@@ -95,6 +95,7 @@ struct standalone_application_information_t
     void (*PaintViewMirror)();
     void (*OnTouchEvent)(int x, int y, uint32_t type);
     void (*OnFocus)();
+    bool (*OnKeyEvent)(uint8_t key);
 };
 
 extern "C" void initialize(const standalone_application_api_t &api);
@@ -103,5 +104,6 @@ extern "C" void shutdown();
 extern "C" void PaintViewMirror();
 extern "C" void OnTouchEvent(int x, int y, uint32_t type);
 extern "C" void OnFocus();
+extern "C" bool OnKeyEvent(uint8_t key);
 
 #endif /*__UI_STANDALONE_APP_H__*/

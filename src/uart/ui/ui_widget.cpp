@@ -221,7 +221,9 @@ namespace ui
 
     Context &Widget::context() const
     {
-        // TODO: wire standalone api: chDbgAssert(parent_, "parent_ is null",                    "Check that parent isn't null before deref.");
+        if (parent_ == nullptr)
+            _api->panic("parent__ is null");
+
         return parent()->context();
     }
 

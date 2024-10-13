@@ -144,8 +144,35 @@ extern "C" void OnTouchEvent(int x, int y, uint32_t type)
 
 extern "C" void OnFocus()
 {
-    if (captured_widget)
+    if (standaloneViewMirror)
+        standaloneViewMirror->focus();
+}
+
+extern "C" bool OnKeyEvent(uint8_t key_val)
+{
+    ui::KeyEvent key = (ui::KeyEvent)key_val;
+    if (context)
     {
-        captured_widget->focus();
+        auto focus_widget = context->focus_manager().focus_widget();
+
+        if (focus_widget)
+        {
+            if (focus_widget->on_key(key))
+                return true;
+
+            context->focus_manager().update(standaloneViewMirror, key);
+
+            if (focus_widget != context->focus_manager().focus_widget())
+                return true;
+            else
+            {
+                if (key == ui::KeyEvent::Up || key == ui::KeyEvent::Back)
+                {
+                    focus_widget->blur();
+                    return false;
+                }
+            }
+        }
     }
+    return false;
 }

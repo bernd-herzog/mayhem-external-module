@@ -52,7 +52,9 @@ typedef struct
     uint32_t binary_size;
 } standalone_app_info;
 
-enum class CommandState : uint16_t
+#define USER_COMMANDS_START 0x7F01
+
+enum class Command : uint16_t
 {
     COMMAND_NONE = 0,
 
@@ -66,10 +68,14 @@ enum class CommandState : uint16_t
     COMMAND_APP_TRANSFER = 0x4183,
 
     // UART specific commands
-    COMMAND_UART_REQUESTDATA = 0x7F01,
+    COMMAND_UART_REQUESTDATA_SHORT = USER_COMMANDS_START,
+    COMMAND_UART_REQUESTDATA_LONG,
+    COMMAND_UART_BAUDRATEDETECTION_ENABLE,
+    COMMAND_UART_BAUDRATEDETECTION_DISABLE,
+    COMMAND_UART_BAUDRATEDETECTION_READ,
 };
 
-volatile CommandState command_state = CommandState::COMMAND_NONE;
+volatile Command command_state = Command::COMMAND_NONE;
 volatile uint16_t app_counter = 0;
 volatile uint16_t app_transfer_block = 0;
 
@@ -91,30 +97,24 @@ void initialize_gpio()
 QueueHandle_t slave_queue;
 std::queue<uint8_t> uart_queue;
 
-void on_command_ISR(CommandState command, std::vector<uint8_t> additional_data)
+void on_command_ISR(Command command, std::vector<uint8_t> additional_data)
 {
     command_state = command;
 
     switch (command)
     {
-    case CommandState::COMMAND_INFO:
-        break;
-
-    case CommandState::COMMAND_APP_INFO:
+    case Command::COMMAND_APP_INFO:
         if (additional_data.size() == 2)
             app_counter = *(uint16_t *)additional_data.data();
         break;
 
-    case CommandState::COMMAND_APP_TRANSFER:
+    case Command::COMMAND_APP_TRANSFER:
         if (additional_data.size() == 4)
         {
             app_counter = *(uint16_t *)additional_data.data();
             app_transfer_block = *(uint16_t *)(additional_data.data() + 2);
-            esp_rom_printf("sending data block: %04x\n", app_transfer_block);
+            // esp_rom_printf("sending data block: %04x\n", app_transfer_block);
         }
-        break;
-
-    case CommandState::COMMAND_UART_REQUESTDATA:
         break;
 
     default:
@@ -129,7 +129,7 @@ std::vector<uint8_t> on_send_ISR()
 {
     switch (command_state)
     {
-    case CommandState::COMMAND_INFO:
+    case Command::COMMAND_INFO:
     {
         device_info info = {
             /* api_version = */ 1,
@@ -140,7 +140,7 @@ std::vector<uint8_t> on_send_ISR()
         return std::vector<uint8_t>((uint8_t *)&info, (uint8_t *)&info + sizeof(info));
     }
 
-    case CommandState::COMMAND_APP_INFO:
+    case Command::COMMAND_APP_INFO:
     {
         if (app_counter == 0)
         {
@@ -156,34 +156,59 @@ std::vector<uint8_t> on_send_ISR()
         break;
     }
 
-    case CommandState::COMMAND_APP_TRANSFER:
+    case Command::COMMAND_APP_TRANSFER:
     {
-        if (app_counter == 0 && app_transfer_block < sizeof(uart_app) / 32)
+        if (app_counter == 0 && app_transfer_block < sizeof(uart_app) / 128)
         {
-            return std::vector<uint8_t>(uart_app + app_transfer_block * 32, uart_app + app_transfer_block * 32 + 32);
+            return std::vector<uint8_t>(uart_app + app_transfer_block * 128, uart_app + app_transfer_block * 128 + 128);
         }
         break;
     }
 
-    case CommandState::COMMAND_UART_REQUESTDATA:
+    case Command::COMMAND_UART_REQUESTDATA_SHORT:
     {
-        // send 1+1+64 bytes
-        // 1 byte: data length
-        // 1 byte: more data available
-        // 64 bytes: data from uart_queue optionally filled with 0xFF
+        // 1 bit: more data available
+        // 7 bit: data length [0 to 4]
+        // 4 bytes: data from uart_queue optionally filled with 0xFF
 
-        std::vector<uint8_t> data(66);
+        const int max_data_length = 4;
+        std::vector<uint8_t> data(1 + max_data_length);
 
-        size_t bytesToSend = uart_queue.size() > 64 ? 64 : uart_queue.size();
-        data[0] = bytesToSend;
-        data[1] = uart_queue.size() > 64 ? 1 : 0;
+        uint8_t bytesToSend = uart_queue.size() > max_data_length ? max_data_length : uart_queue.size();
+        bool moreData = uart_queue.size() > max_data_length ? 1 : 0;
+        data[0] = (bytesToSend & 0x7F) | (moreData << 7);
 
-        for (int i = bytesToSend; i < 64; i++)
-            data[i + 2] = 0xFF;
+        for (int i = bytesToSend; i < max_data_length; i++)
+            data[i + 1] = 0xFF;
 
         for (int i = 0; i < bytesToSend; i++)
         {
-            data[i + 2] = uart_queue.front();
+            data[i + 1] = uart_queue.front();
+            uart_queue.pop();
+        }
+
+        return data;
+    }
+
+    case Command::COMMAND_UART_REQUESTDATA_LONG:
+    {
+        // 1 bit: more data available
+        // 7 bit: data length [0 to 127]
+        // 127 bytes: data from uart_queue optionally filled with 0xFF
+
+        const int max_data_length = 127;
+        std::vector<uint8_t> data(1 + max_data_length);
+
+        uint8_t bytesToSend = uart_queue.size() > max_data_length ? max_data_length : uart_queue.size();
+        bool moreData = uart_queue.size() > max_data_length ? 1 : 0;
+        data[0] = (bytesToSend & 0x7F) | (moreData << 7);
+
+        for (int i = bytesToSend; i < max_data_length; i++)
+            data[i + 1] = 0xFF;
+
+        for (int i = 0; i < bytesToSend; i++)
+        {
+            data[i + 1] = uart_queue.front();
             uart_queue.pop();
         }
 
@@ -236,13 +261,13 @@ bool i2c_slave_callback_ISR(struct i2c_slave_device_t *dev, I2CSlaveCallbackReas
             uint16_t command = *(uint16_t *)&dev->buffer[dev->bufstart];
             std::vector<uint8_t> additional_data(dev->buffer + dev->bufstart + 2, dev->buffer + dev->bufend);
 
-            esp_rom_printf("command %04x\n", command);
-            esp_rom_printf("  data: ");
-            for (auto &data : additional_data)
-                esp_rom_printf("%02x ", data);
-            esp_rom_printf("\n");
+            // esp_rom_printf("command %04x\n", command);
+            // esp_rom_printf("  data: ");
+            // for (auto &data : additional_data)
+            //     esp_rom_printf("%02x ", data);
+            // esp_rom_printf("\n");
 
-            on_command_ISR((CommandState)command, additional_data);
+            on_command_ISR((Command)command, additional_data);
         }
         break;
 
@@ -271,8 +296,15 @@ void initialize_fixed_i2c()
 
 #define BUF_SIZE (1024)
 
+/*
+allowed baud rates:
+50, 75, 110, 134, 150, 200, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400, 460800, 576000, 921600, 1843200, 3686400
+*/
+
 uart_config_t uart_config = {
-    .baud_rate = 230400,
+    // https://github.com/espressif/esp-idf/issues/3336
+    // https://github.com/ExpressLRS/ExpressLRS/pull/1435/fileshttps://github.com/ExpressLRS/ExpressLRS/pull/1435/files
+    .baud_rate = 115200,
     .data_bits = UART_DATA_8_BITS,
     .parity = UART_PARITY_DISABLE,
     .stop_bits = UART_STOP_BITS_1,
@@ -352,8 +384,8 @@ extern "C" void app_main(void)
     initialize_fixed_i2c();
     initialize_uart();
 
-    std::cout << "Hello, world!" << std::endl;
-
     xTaskCreate(i2c_task, "i2c_task", 1024 * 2, (void *)0, 10, NULL);
     xTaskCreate(uart_task, "uart_task", 1024 * 2, (void *)0, 10, NULL);
+
+    std::cout << "[PP MDK] PortaPack - Module Develoment Kit is ready." << std::endl;
 }
