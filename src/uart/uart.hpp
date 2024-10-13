@@ -29,17 +29,23 @@
 class StandaloneViewMirror : public ui::View
 {
 public:
-    StandaloneViewMirror() : View{{0, 16, 240, 304}}
+    StandaloneViewMirror(ui::Context &context, const ui::Rect parent_rect) : View{parent_rect}, context_(context)
     {
         set_style(ui::Theme::getInstance()->bg_dark);
 
-        add_children({&text, &console});
+        add_children({&text, &console, &button});
 
-        text.set("Hello from standalone app!");
+        text.set("BR: 115200");
 
-        console.hidden(false);
-        console.visible(true);
-        console.writeln("console.test");
+        // console.hidden(false);
+        // console.visible(true);
+
+        button.on_select = [this](ui::Button &button)
+        {
+            button.blur();
+            //_api->panic("Button pressed");
+            // text.set("BR: 9600");
+        };
     }
 
     ui::Console &get_console()
@@ -47,7 +53,16 @@ public:
         return console;
     }
 
+    ui::Context &context() const override
+    {
+        return context_;
+    }
+
 private:
-    ui::Text text{{8, 1 * 16, 208, 16}};
+    ui::Text text{{4, 4, 120, 16}};
+    ui::Button button{{120, 4 + 24, 116, 24}, "DETECT BR"};
+
     ui::Console console{{0, 4 * 16, 240, 240}};
+
+    ui::Context &context_;
 };

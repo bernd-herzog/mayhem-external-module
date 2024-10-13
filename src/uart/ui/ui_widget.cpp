@@ -46,6 +46,7 @@ namespace ui
 
     void dirty_set()
     {
+        _api->set_dirty();
         ui_dirty = true;
     }
 
@@ -187,8 +188,7 @@ namespace ui
 
     bool Widget::has_focus()
     {
-        return false;
-        // TODO: wire standalone api: // return (context().focus_manager().focus_widget() == this);
+        return (context().focus_manager().focus_widget() == this);
     }
 
     bool Widget::on_key(const KeyEvent event)
@@ -854,8 +854,7 @@ namespace ui
                         if ((pos.x() + advance.x()) > rect.width())
                             crlf();
 
-                        // TODO: wire standalone api: display.scroll_area_y(pos.y())
-                        Point pos_glyph{rect.left() + pos.x(), pos.y()};
+                        Point pos_glyph{rect.left() + pos.x(), _api->scroll_area_y(pos.y())};
                         _api->draw_bitmap(pos_glyph.x(), pos_glyph.y(), glyph.size().width(), glyph.size().height(), glyph.pixels(), pen_color.v, s.background.v);
 
                         pos += {advance.x(), 0};
@@ -913,13 +912,13 @@ namespace ui
             // or some lines will end up vertically truncated.
             scroll_height = max_lines * line_height;
 
-            // TODO: wire standalone api: display.scroll_set_area(sr.top(), sr.top() + scroll_height);
-            // TODO: wire standalone api: display.scroll_set_position(0);
+            _api->scroll_set_area(sr.top(), sr.top() + scroll_height);
+            _api->scroll_set_position(0);
             scrolling_enabled = true;
         }
         else
         {
-            // TODO: wire standalone api: display.scroll_disable();
+            _api->scroll_disable();
             scrolling_enabled = false;
         }
     }
@@ -957,11 +956,11 @@ namespace ui
             pos = {0, scroll_height - line_height};
 
             // Scroll off the "top" line.
-            // TODO: wire standalone api: display.scroll(-line_height);
+            _api->scroll(-line_height);
 
             // Clear the new line at the "bottom".
-            // TODO: wire standalone api: Rect dirty{sr.left(), display.scroll_area_y(pos.y()), sr.width(), line_height};
-            // TODO: wire standalone api: display.fill_rectangle(dirty, s.background);
+            Rect dirty{sr.left(), _api->scroll_area_y(pos.y()), sr.width(), line_height};
+            _api->fill_rectangle(dirty.left(), dirty.top(), dirty.width(), dirty.height(), s.background.v);
         }
     }
 

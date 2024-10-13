@@ -23,8 +23,11 @@
 #define __UI_STANDALONE_APP_H__
 
 #include <cerrno>
+#include <string>
 #include <cstdint>
 #include <stddef.h>
+
+#include "ui/ui.hpp"
 
 #define CURRENT_STANDALONE_APPLICATION_API_VERSION 2
 
@@ -46,7 +49,16 @@ struct standalone_application_api_t
 
     void (*fill_rectangle_unrolled8)(int x, int y, int width, int height, uint16_t color);
     void (*draw_bitmap)(int x, int y, int width, int height, const uint8_t *pixels, uint16_t foreground, uint16_t background);
+
+    ui::Coord (*scroll_area_y)(const ui::Coord y);
+    void (*scroll_set_area)(const ui::Coord top_y, const ui::Coord bottom_y);
+    void (*scroll_disable)();
+    ui::Coord (*scroll_set_position)(const ui::Coord position);
+    ui::Coord (*scroll)(const int32_t delta);
+
     bool (*i2c_read)(uint8_t *cmd, size_t cmd_len, uint8_t *data, size_t data_len);
+    void (*panic)(const char *msg);
+    void (*set_dirty)();
 };
 
 extern const standalone_application_api_t *_api;
@@ -81,11 +93,15 @@ struct standalone_application_information_t
     void (*shutdown)();
 
     void (*PaintViewMirror)();
+    void (*OnTouchEvent)(int x, int y, uint32_t type);
+    void (*OnFocus)();
 };
 
 extern "C" void initialize(const standalone_application_api_t &api);
 extern "C" void on_event(const uint32_t &events);
 extern "C" void shutdown();
 extern "C" void PaintViewMirror();
+extern "C" void OnTouchEvent(int x, int y, uint32_t type);
+extern "C" void OnFocus();
 
 #endif /*__UI_STANDALONE_APP_H__*/

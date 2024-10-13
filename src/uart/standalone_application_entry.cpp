@@ -71,7 +71,8 @@ extern "C"
         /*.on_event = */ on_event,
         /*.shutdown = */ shutdown,
         /*.PaintViewMirror = */ PaintViewMirror,
-    };
+        /*.OnTouchEvent = */ OnTouchEvent,
+        /*.OnFocus = */ OnFocus};
 }
 
 /* Implementing abort() eliminates requirement for _getpid(), _kill(), _exit(). */
