@@ -33,23 +33,33 @@ extern "C" void initialize(const standalone_application_api_t &api)
 
     context = new ui::Context();
     standaloneViewMirror = new StandaloneViewMirror(*context, {0, 16, 240, 304});
+
+    Command cmd = Command::COMMAND_UART_BAUDRATE_GET;
+    std::vector<uint8_t> data(4);
+
+    if (_api->i2c_read((uint8_t *)&cmd, 2, data.data(), data.size()) == false)
+        return;
+
+    uint32_t baudrate = *(uint32_t *)data.data();
+    standaloneViewMirror->set_baudrate(baudrate);
 }
-
-#define USER_COMMANDS_START 0x7F01
-
-enum class Command : uint16_t
-{
-    // UART specific commands
-    COMMAND_UART_REQUESTDATA_SHORT = USER_COMMANDS_START,
-    COMMAND_UART_REQUESTDATA_LONG,
-    COMMAND_UART_BAUDRATEDETECTION_ENABLE,
-    COMMAND_UART_BAUDRATEDETECTION_DISABLE,
-    COMMAND_UART_BAUDRATEDETECTION_READ,
-};
 
 extern "C" void on_event(const uint32_t &events)
 {
     (void)events;
+
+    if (standaloneViewMirror->isBaudrateChanged())
+    {
+        Command cmd = Command::COMMAND_UART_BAUDRATE_GET;
+        std::vector<uint8_t> data(4);
+
+        if (_api->i2c_read((uint8_t *)&cmd, 2, data.data(), data.size()) == false)
+            return;
+
+        uint32_t baudrate = *(uint32_t *)data.data();
+        standaloneViewMirror->set_baudrate(baudrate);
+        return;
+    }
 
     Command cmd = Command::COMMAND_UART_REQUESTDATA_SHORT;
     std::vector<uint8_t> data(5);
@@ -166,7 +176,7 @@ extern "C" bool OnKeyEvent(uint8_t key_val)
                 return true;
             else
             {
-                if (key == ui::KeyEvent::Up || key == ui::KeyEvent::Back)
+                if (key == ui::KeyEvent::Up || key == ui::KeyEvent::Back || key == ui::KeyEvent::Left)
                 {
                     focus_widget->blur();
                     return false;
@@ -174,5 +184,31 @@ extern "C" bool OnKeyEvent(uint8_t key_val)
             }
         }
     }
+    return false;
+}
+
+extern "C" bool OnEncoder(int32_t delta)
+{
+    if (context)
+    {
+        auto focus_widget = context->focus_manager().focus_widget();
+
+        if (focus_widget)
+            return focus_widget->on_encoder((ui::EncoderEvent)delta);
+    }
+
+    return false;
+}
+
+extern "C" bool OnKeyboad(uint8_t key)
+{
+    if (context)
+    {
+        auto focus_widget = context->focus_manager().focus_widget();
+
+        if (focus_widget)
+            return focus_widget->on_keyboard((ui::KeyboardEvent)key);
+    }
+
     return false;
 }

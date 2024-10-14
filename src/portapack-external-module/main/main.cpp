@@ -3,6 +3,7 @@
 #include <cstring>
 #include <vector>
 #include <queue>
+#include <algorithm>
 
 #include "driver/i2c.h"
 #include "driver/uart.h"
@@ -24,6 +25,16 @@ static_assert(sizeof(uart_app) % 32 == 0, "app size must be multiple of 32 bytes
 #define LED_RED GPIO_NUM_46
 #define LED_GREEN GPIO_NUM_0
 #define LED_BLUE GPIO_NUM_45
+
+void initialize_uart(uint32_t baudrate);
+void deinitialize_uart();
+
+uint32_t baudrate = 115200;
+
+std::vector<uint32_t> baudrates = {50, 75, 110, 134, 150, 200, 300, 600,
+                                   1200, 2400, 4800, 9600, 14400, 19200,
+                                   28800, 38400, 57600, 115200, 230400,
+                                   460800, 576000, 921600, 1843200, 3686400};
 
 typedef struct
 {
@@ -70,9 +81,9 @@ enum class Command : uint16_t
     // UART specific commands
     COMMAND_UART_REQUESTDATA_SHORT = USER_COMMANDS_START,
     COMMAND_UART_REQUESTDATA_LONG,
-    COMMAND_UART_BAUDRATEDETECTION_ENABLE,
-    COMMAND_UART_BAUDRATEDETECTION_DISABLE,
-    COMMAND_UART_BAUDRATEDETECTION_READ,
+    COMMAND_UART_BAUDRATE_INC,
+    COMMAND_UART_BAUDRATE_DEC,
+    COMMAND_UART_BAUDRATE_GET
 };
 
 volatile Command command_state = Command::COMMAND_NONE;
@@ -113,8 +124,40 @@ void on_command_ISR(Command command, std::vector<uint8_t> additional_data)
         {
             app_counter = *(uint16_t *)additional_data.data();
             app_transfer_block = *(uint16_t *)(additional_data.data() + 2);
-            // esp_rom_printf("sending data block: %04x\n", app_transfer_block);
         }
+        break;
+
+    case Command::COMMAND_UART_BAUDRATE_INC:
+
+        deinitialize_uart();
+
+        if (baudrate == baudrates.back())
+            baudrate = baudrates.front();
+        else
+        {
+            auto it = std::find(baudrates.begin(), baudrates.end(), baudrate);
+            baudrate = *(it + 1);
+        }
+
+        esp_rom_printf("COMMAND_UART_BAUDRATE_INC: %d\n", baudrate);
+
+        initialize_uart(baudrate);
+        break;
+
+    case Command::COMMAND_UART_BAUDRATE_DEC:
+        deinitialize_uart();
+
+        if (baudrate == baudrates.front())
+            baudrate = baudrates.back();
+        else
+        {
+            auto it = std::find(baudrates.begin(), baudrates.end(), baudrate);
+            baudrate = *(it - 1);
+        }
+
+        esp_rom_printf("COMMAND_UART_BAUDRATE_DEC: %d\n", baudrate);
+
+        initialize_uart(baudrate);
         break;
 
     default:
@@ -215,6 +258,15 @@ std::vector<uint8_t> on_send_ISR()
         return data;
     }
 
+    case Command::COMMAND_UART_BAUDRATE_GET:
+    {
+        std::vector<uint8_t> data(4);
+        esp_rom_printf("COMMAND_UART_BAUDRATE_GET: %d\n", baudrate);
+        *(uint32_t *)data.data() = baudrate;
+        return data;
+    }
+    break;
+
     default:
         break;
     }
@@ -231,8 +283,6 @@ bool i2c_slave_callback_ISR(struct i2c_slave_device_t *dev, I2CSlaveCallbackReas
         gpio_set_level(LED_GREEN, 1);
         gpio_set_level(LED_BLUE, 1);
 
-        // std::cout << "I2C_CALLBACK_REPEAT_START" << std::endl;
-        esp_rom_printf("I2C_CALLBACK_REPEAT_START\n");
         break;
 
     case I2C_CALLBACK_SEND_DATA:
@@ -240,7 +290,6 @@ bool i2c_slave_callback_ISR(struct i2c_slave_device_t *dev, I2CSlaveCallbackReas
         gpio_set_level(LED_GREEN, 0);
         gpio_set_level(LED_BLUE, 1);
 
-        // std::cout << "I2C_CALLBACK_SEND_DATA" << std::endl;
         if (dev->state == I2C_STATE_SEND)
         {
             auto data = on_send_ISR();
@@ -260,12 +309,6 @@ bool i2c_slave_callback_ISR(struct i2c_slave_device_t *dev, I2CSlaveCallbackReas
 
             uint16_t command = *(uint16_t *)&dev->buffer[dev->bufstart];
             std::vector<uint8_t> additional_data(dev->buffer + dev->bufstart + 2, dev->buffer + dev->bufend);
-
-            // esp_rom_printf("command %04x\n", command);
-            // esp_rom_printf("  data: ");
-            // for (auto &data : additional_data)
-            //     esp_rom_printf("%02x ", data);
-            // esp_rom_printf("\n");
 
             on_command_ISR((Command)command, additional_data);
         }
@@ -296,24 +339,18 @@ void initialize_fixed_i2c()
 
 #define BUF_SIZE (1024)
 
-/*
-allowed baud rates:
-50, 75, 110, 134, 150, 200, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400, 460800, 576000, 921600, 1843200, 3686400
-*/
-
-uart_config_t uart_config = {
-    // https://github.com/espressif/esp-idf/issues/3336
-    // https://github.com/ExpressLRS/ExpressLRS/pull/1435/fileshttps://github.com/ExpressLRS/ExpressLRS/pull/1435/files
-    .baud_rate = 115200,
-    .data_bits = UART_DATA_8_BITS,
-    .parity = UART_PARITY_DISABLE,
-    .stop_bits = UART_STOP_BITS_1,
-    .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-    .source_clk = UART_SCLK_DEFAULT,
-};
-
-void initialize_uart()
+void initialize_uart(uint32_t baudrate)
 {
+    uart_config_t uart_config = {
+        .baud_rate = (int)baudrate,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .rx_flow_ctrl_thresh = 0,
+        .source_clk = UART_SCLK_DEFAULT,
+        .flags = {.backup_before_sleep = 0}};
+
     int intr_alloc_flags = 0;
 
 #if CONFIG_UART_ISR_IN_IRAM
@@ -323,6 +360,11 @@ void initialize_uart()
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, BUF_SIZE * 2, 0, 0, NULL, intr_alloc_flags));
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, UART_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+}
+
+void deinitialize_uart()
+{
+    ESP_ERROR_CHECK(uart_driver_delete(UART_NUM_1));
 }
 
 static void i2c_task(void *arg)
@@ -382,7 +424,7 @@ extern "C" void app_main(void)
 {
     initialize_gpio();
     initialize_fixed_i2c();
-    initialize_uart();
+    initialize_uart(baudrate);
 
     xTaskCreate(i2c_task, "i2c_task", 1024 * 2, (void *)0, 10, NULL);
     xTaskCreate(uart_task, "uart_task", 1024 * 2, (void *)0, 10, NULL);
